@@ -5,81 +5,178 @@ using UnityEngine.UI;
 
 public class GameManager : MonoBehaviour
 {
-	[Header("Grid Map")]
+	[Space][Header("Grid Map")]
 	[SerializeField] private GameObject gridObject;
 	[SerializeField] private GameObject cellPrefab;
 	[SerializeField] private int cellRowCount;
 	[SerializeField] private int cellColumnCount;
 	private GridLayoutGroup gridLayoutGroup;
-	private List<List<GameObject>> cells;
-	[Space]
-
-	[Header("Drones")]
+	private List<List<Cell>> cells;
+	
+	[Space][Header("Drones")]
 	[SerializeField] private int droneCount;
-	[SerializeField] private Vector2 startFinishPoint;
+	[SerializeField] private Vector2Int startFinishLocation;
 	private List<int> moveDirections = new List<int> { 0, 1, 2, 3, 4, 5, 6, 7};
-	private List<Vector2> directionCoordinates = new List<Vector2> {new Vector2(-1, -1), new Vector2(-1, 0), new Vector2(-1, 1), new Vector2(0, -1),
-																	new Vector2(0, 1), new Vector2(1, -1), new Vector2(1, 0), new Vector2(1, 1)};
-	private List<int> directionCosts = new List<int> { 2, 1, 2, 3, 3, 4, 5, 4 };
+	private List<Vector2Int> directionCoordinates = new List<Vector2Int> {new Vector2Int(-1, -1), new Vector2Int(-1, 0), new Vector2Int(-1, 1), new Vector2Int(0, -1),
+																	new Vector2Int(0, 1), new Vector2Int(1, -1), new Vector2Int(1, 0), new Vector2Int(1, 1)};
+	private List<int> moveRotateFitnesses = new List<int> { 4, 5, 4, 3, 3, 2, 1, 2 };
 	/// <directions>
 	/// 0	1	2
 	/// 3	X	4
 	/// 5	6	7
 	/// </directions>
-	private float mutationProbability;
 	private List<List<bool>> exploredAreas;
-	[Space]
-
-	[Header("Genetic Algorithm")]
+	
+	[Space][Header("Genetic Algorithm")]
 	[SerializeField] private int populationCount;
-	private List<List<Individual>> populations;
+	[SerializeField][Tooltip("Best reproduceCount individuals will be used to reproduce from.")] private int reproduceCount;
+	[SerializeField] private float mutationProbability;
+	[SerializeField] private int mutationCount;
+	private int chromosomeLength;
 
+	[Space]
+	[Header("Fitness Functions")]
+	[SerializeField] private float exploredAreaWeight;
+	[SerializeField] private float returnedToStartWeight;
+	[SerializeField] private float moveRotateCostWeight;
 
 	private void Start()
 	{
 		gridLayoutGroup = gridObject.GetComponent<GridLayoutGroup>();
-		cells = new List<List<GameObject>>();
+		cells = new List<List<Cell>>();
 		exploredAreas = new List<List<bool>>();
-		populations = new List<List<Individual>>();
-
-		for(int i = 0; i < cellRowCount; i++)
-		{
-			cells.Add(new List<GameObject>());
-			exploredAreas.Add(new List<bool>());
-		}
-		for(int i = 0; i < droneCount; i++)
+		List<List<Individual>> populations = new List<List<Individual>>();
+		for (int i = 0; i < droneCount; i++)
 		{
 			populations.Add(new List<Individual>());
 		}
 
+		for (int i = 0; i < cellRowCount; i++)
+		{
+			cells.Add(new List<Cell>());
+			for(int j = 0; j < cellColumnCount; j++)
+			{
+				cells[i].Add(new Cell(false));
+			}
+			exploredAreas.Add(new List<bool>());
+		}
+
 		InitGridMap();
-		InitFirstGeneration();
+		InitFirstGeneration(populations);
+		PrintPopulations(populations);
+		GeneticAlgorithm(populations);
+		Reproduce(populations[0]);
 	}
 
 	private void InitGridMap()
 	{
 		gridLayoutGroup.constraintCount = cellColumnCount;
-		for(int i = 0; i < cellRowCount; i++)
+		for (int i = 0; i < cellRowCount; i++)
 		{
-			for(int j = 0; j < cellColumnCount; j++)
+			for (int j = 0; j < cellColumnCount; j++)
 			{
-				cells[i].Add(Instantiate(cellPrefab, gridObject.transform));
+				cells[i][j].cellObject = Instantiate(cellPrefab, gridObject.transform);
+				cells[i][j].isExplored = false;
 			}
 		}
 	}
 
-	private void InitFirstGeneration()
+	private void InitFirstGeneration(List<List<Individual>> populations)
 	{
-		int chromosomeLength = Mathf.CeilToInt(cellRowCount * cellColumnCount - 1);
+		chromosomeLength = Mathf.CeilToInt((cellRowCount * cellColumnCount - 1) / droneCount) + 1;
 
-		for(int i = 0; i < droneCount; i++)
+		for (int i = 0; i < droneCount; i++)
 		{
-			for(int j = 0; j < populationCount; j++)
+			for (int j = 0; j < populationCount; j++)
 			{
 				populations[i].Add(GenerateRandomChromosome(chromosomeLength));
+			}
+			CalculateFitnesses(populations[i]);
+		}
+	}
+
+	private void PrintPopulations(List<List<Individual>> populations)
+	{
+		for (int i = 0; i < droneCount; i++)
+		{
+			for (int j = 0; j < populationCount; j++)
+			{
 				PrintChromosome(populations[i][j]);
 			}
 		}
+	}
+
+	private void GeneticAlgorithm(List<List<Individual>> populations)
+	{
+		//while (true)
+		{
+			for(int i = 0; i < droneCount; i++)
+			{
+
+				List<Individual> newPopulation = SelectIndividuals(populations[i], reproduceCount);
+				newPopulation = Reproduce(newPopulation);
+				for (int j = 0; j < newPopulation.Count; j++)
+				{
+					if(Random.Range(0, 1) < mutationProbability)
+					{
+						MutateChromosomes(newPopulation[j]);
+					}
+				}
+			}
+		}
+	}
+
+	private void CalculateFitnesses(List<Individual> population)
+	{
+		foreach(Individual individual in population)
+		{
+			CalculateFitness(individual, startFinishLocation);
+		}
+	}
+
+	private void CalculateFitness(Individual individual, Vector2Int initialLocation)
+	{
+		float totalWeightedFitness = 0f;
+		float exploredAreaFitness = 0f;
+		float returnedToStartFitness = 0f;
+		float moveRotateCost = 0f;
+		Vector2Int currentLocation = initialLocation;
+		cells[currentLocation.x][currentLocation.y].isExplored = true;
+		
+		for(int i = 0; i < individual.path.Count; i++)
+		{
+			if(!CanMoveToDirection(currentLocation, individual.path[i])) { continue; }
+			moveRotateCost += CalculateMoveRotateCost(currentLocation, individual.path[i]);
+			currentLocation = MoveToDirection(currentLocation, individual.path[i]);
+		//	Debug.LogError(currentLocation);
+			cells[currentLocation.x][currentLocation.y].isExplored = true;
+		}
+
+		int distanceToStartLocation = Mathf.Abs(initialLocation.x - currentLocation.x) > Mathf.Abs(initialLocation.y - currentLocation.y)
+									? Mathf.Abs(initialLocation.x - currentLocation.x)
+									: Mathf.Abs(initialLocation.y - currentLocation.y);
+
+		returnedToStartFitness = -distanceToStartLocation;
+
+		int exploredCellCount = 0;
+		foreach(List<Cell> cellRow in cells)
+		{
+			foreach(Cell cell in cellRow)
+			{
+				if (cell.isExplored)
+				{
+					exploredCellCount++;
+				} 
+			}
+		}
+
+		exploredAreaFitness = (float) exploredCellCount / (cellRowCount * cellColumnCount);
+
+		totalWeightedFitness += exploredAreaWeight * exploredAreaFitness;
+		totalWeightedFitness += returnedToStartWeight * returnedToStartFitness;
+		totalWeightedFitness -= moveRotateCostWeight * moveRotateCost;
+
+		individual.fitness = totalWeightedFitness;
 	}
 
 	private Individual GenerateRandomChromosome(int chromosomeLength)
@@ -99,11 +196,11 @@ public class GameManager : MonoBehaviour
 		{
 			chromosome += individual.path[i];
 		}
-		chromosome += "\t\tLength: " + individual.path.Count;
+		chromosome += "\t\tFitness: " + individual.fitness + "\t\tLength: " + individual.path.Count;
 		Debug.Log(chromosome);
 	}
 
-	private bool CanMoveToDirection(Vector2 location, int direction)
+	private bool CanMoveToDirection(Vector2Int location, int direction)
 	{
 		if((location.x + directionCoordinates[direction].x) < 0) { return false; }
 		if((location.x + directionCoordinates[direction].x) >= cellColumnCount) { return false; }
@@ -113,16 +210,25 @@ public class GameManager : MonoBehaviour
 		return true;
 	}
 
-	private int CalculateMovementCost(Vector2 location, int direction)
+	private float CalculateMoveRotateCost(Vector2Int location, int direction)
 	{
 		if(!CanMoveToDirection(location, direction)) { return 1000; }
 
-		return directionCosts[direction];
+		return moveRotateFitnesses[direction];
 	}
 
-	private void SelectIndividuals(List<Individual> population, int selectCount)
+	private Vector2Int MoveToDirection(Vector2Int currentLocation, int direction)
 	{
-		sort(population, 0, population.Count - 1);
+		return new Vector2Int(directionCoordinates[direction].x + currentLocation.x, directionCoordinates[direction].y + currentLocation.y);
+	}
+
+	private List<Individual> SelectIndividuals(List<Individual> population, int selectCount)
+	{
+		List<Individual> sortedPopulation = new List<Individual>();
+		sortedPopulation.AddRange(population);
+		sort(sortedPopulation, 0, sortedPopulation.Count - 1);
+
+		return sortedPopulation.GetRange(0, selectCount);
 	}
 
 	private List<Individual> Reproduce(List<Individual> populationToReproduce)
@@ -151,11 +257,11 @@ public class GameManager : MonoBehaviour
 		return newIndividual;
 	}
 
-	private void MutateChromosome(List<int> chromosome, int mutationCount)
+	private void MutateChromosomes(Individual individual)
 	{
 		for (int i = 0; i < mutationCount; i++)
 		{
-			chromosome[Random.Range(0, chromosome.Count)] = Random.Range(0, 8);
+			individual.path[Random.Range(0, individual.path.Count)] = Random.Range(0, 8);
 		}
 	}
 
@@ -168,6 +274,17 @@ public class GameManager : MonoBehaviour
 		{
 			path = new List<int>();
 			this.fitness = fitness;
+		}
+	}
+
+	public class Cell
+	{
+		public GameObject cellObject;
+		public bool isExplored;
+
+		public Cell(bool isExplored)
+		{
+			this.isExplored = isExplored;
 		}
 	}
 
