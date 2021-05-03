@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 3901266305116136547}
   - component: {fileID: 5251422999259948289}
   m_Layer: 5
-  m_Name: Drone3
+  m_Name: Drone2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -30,7 +30,7 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 4191195994936841877}
-  m_RootOrder: 2
+  m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
@@ -92,7 +92,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &4816534866154765210
 RectTransform:
   m_ObjectHideFlags: 0
@@ -162,7 +162,7 @@ GameObject:
   - component: {fileID: 5892865182543626411}
   - component: {fileID: 313705379024650984}
   m_Layer: 5
-  m_Name: Drone2
+  m_Name: Drone3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -180,7 +180,7 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 4191195994936841877}
-  m_RootOrder: 1
+  m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
@@ -208,7 +208,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.514151, g: 1, b: 0.514151, a: 1}
+  m_Color: {r: 0.34242615, g: 0.764151, b: 0.39148808, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -312,7 +312,7 @@ GameObject:
   - component: {fileID: 9211049414850195989}
   - component: {fileID: 8646533456517168953}
   m_Layer: 5
-  m_Name: Text
+  m_Name: DroneLocationText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -395,7 +395,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &9165159417851960461
 RectTransform:
   m_ObjectHideFlags: 0
@@ -499,7 +499,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.514151, g: 1, b: 0.514151, a: 1}
+  m_Color: {r: 0, g: 0.7019608, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -607,7 +607,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &4191195994936841877
 RectTransform:
   m_ObjectHideFlags: 0
@@ -620,8 +620,8 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
   - {fileID: 4360612537972465603}
-  - {fileID: 4056291004476027307}
   - {fileID: 8519573032951673217}
+  - {fileID: 4056291004476027307}
   - {fileID: 4827596072533488411}
   m_Father: {fileID: 5852533321170286726}
   m_RootOrder: 2
@@ -666,6 +666,7 @@ GameObject:
   - component: {fileID: 5852533321170286726}
   - component: {fileID: 3821640873803671990}
   - component: {fileID: 7206990305575183025}
+  - component: {fileID: 3714020966078994974}
   m_Layer: 5
   m_Name: Cell
   m_TagString: Untagged
@@ -734,6 +735,26 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!114 &3714020966078994974
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8231869883733268894}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fac380a8769792d4f931d545fb8b949f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  droneLocationText: {fileID: 8646533456517168953}
+  oneDroneParent: {fileID: 9197382451690780593}
+  twoDroneParent: {fileID: 4860531842980839363}
+  fourDroneParent: {fileID: 7032136765592891601}
+  isExplored: 0
+  oneDroneImages: []
+  twoDroneImages: []
+  fourDroneImages: []
 --- !u!1 &8997254740141265676
 GameObject:
   m_ObjectHideFlags: 0
@@ -825,7 +846,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &9032499841671417912
 RectTransform:
   m_ObjectHideFlags: 0
