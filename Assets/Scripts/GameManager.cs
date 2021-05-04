@@ -2,15 +2,37 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Vectrosity;
+
+/// <summary>
+/// Author: Mehmet Hayri Çakýr
+/// </summary>
+
 
 public class GameManager : MonoBehaviour
 {
+	private const int rowColumnCountDefault = 9;
+	private const int droneCountDefault = 1;
+	private const int populationCountDefault = 1000;
+	private const int selectCountDefault = 32;
+	private const float exploredAreaFitnessWeightDefault = 0.55f;
+	private const float returnedToStartFitnessWeightDefault = 0.35f;
+	private const float rotateFitnessWeightDefault = 0.1f;
+	private const bool stopIfExploredAllCellsDefault = false;
+	private const bool stopIfReachedDesiredFitnessDefault = false;
+	private const bool stopIfReachedMaxGenerationCountDefault = true;
+	private const bool drawDronePathsEachGenerationDefault = false;
+	private const bool drawDronePathsBestGenerationDefault = false;
+	private const float desiredFitnessDefault = 0.95f;
+	private const int maxGenerationCountDefault = 300;
+	private const int reproduceFunctionOptionDefault = 3;
+	private const int mutationCountDefault = 2;
+
 	[Space]
 	[Header("Grid Map")]
 	[SerializeField] private GameObject gridObject;
 	[SerializeField] private GameObject cellPrefab;
-	[SerializeField] private int cellRowCount;
-	[SerializeField] private int cellColumnCount;
+	[SerializeField] private int cellRowColumnCount;
 	private GridLayoutGroup gridLayoutGroup;
 	private List<List<Cell>> cells;
 
@@ -44,18 +66,20 @@ public class GameManager : MonoBehaviour
 	[Header("Fitness Functions")]
 	[SerializeField] private float exploredAreaFitnessWeight;
 	[SerializeField] private float returnedToStartFitnessWeight;
-	[SerializeField] private float moveRotateFitnessWeight;
+	[SerializeField] private float rotateFitnessWeight;
 
 	[Space]
 	[Header("Stopping Conditions")]
-	[SerializeField] private bool scannedAllCells;
-	[SerializeField] private bool reachedDesiredFitness;
-	[SerializeField] private bool reachedMaxGenerationCount;
+	[SerializeField] private bool stopIfExploredAllCells;
+	[SerializeField] private bool stopIfReachedDesiredFitness;
+	[SerializeField] private bool stopIfReachedMaxGenerationCount;
 	[SerializeField] private float desiredFitness;
 	[SerializeField] private int maxGenerationCount;
 
 	[Space]
 	[Header("UI")]
+	[SerializeField] private bool drawDronePathsEachGeneration;
+	[SerializeField] private bool drawDronePathsBestGeneration;
 	[SerializeField] private Text runButtonText;
 	[SerializeField] private Text stopButtonText;
 	[SerializeField] private Text generationText;
@@ -64,11 +88,29 @@ public class GameManager : MonoBehaviour
 	[SerializeField] private Text currentGenExploredCellsCountText;
 	[SerializeField] private Text maxExploredCellsCountText;
 	[SerializeField] private Text timeElapsedText;
+	[SerializeField] private List<Color> droneColors;
 
+	[Space]
+	[Header("Parameters Panel UI")]
+	[SerializeField] private Dropdown rowColumnCountDropdown;
+	[SerializeField] private Dropdown droneCountDropDown;
+	[SerializeField] private InputField populationCountInputField;
+	[SerializeField] private InputField selectCountInputField;
+	[SerializeField] private InputField exploredAreaFitnessWeightInputField;
+	[SerializeField] private InputField returnedToStartFitnessWeightInputField;
+	[SerializeField] private InputField rotateFitnessWeightInputField;
+	[SerializeField] private Dropdown drawDronePathsDropdown;
+	[SerializeField] private ToggleGroupPublicToggles stoppingConditionsToggleGroup;
+	[SerializeField] private InputField desiredFitnessInputField;
+	[SerializeField] private InputField maxGenerationCountInputField;
+	
 
+	//private VectorLine[] lines;
+	private List<VectorLine> lines = new List<VectorLine>();
 	private int lastMovedDirection = 1;
 	List<Individual> population;
 	private AlgorithmState algorithmState;
+	private GameObject startFinishLocationObject;
 	public enum AlgorithmState
 	{
 		Stopped,
@@ -77,37 +119,40 @@ public class GameManager : MonoBehaviour
 		Finished
 	}
 
-	private void Start()
+	private static GameManager instance;
+	public static GameManager Instance
 	{
-		gridLayoutGroup = gridObject.GetComponent<GridLayoutGroup>();
-		cells = new List<List<Cell>>();
-
-		float gridObjectSizeX = gridObject.GetComponent<RectTransform>().sizeDelta.x;
-		gridObjectSizeX -= gridLayoutGroup.padding.left + gridLayoutGroup.padding.right;
-		gridObjectSizeX -= (cellColumnCount - 1) * gridLayoutGroup.spacing.x;
-		gridObjectSizeX /= cellColumnCount;
-		Vector2 cellSize = new Vector2(gridObjectSizeX, gridObjectSizeX);
-		gridLayoutGroup.cellSize = cellSize;
-		for (int i = 0; i < cellRowCount; i++)
-		{
-			cells.Add(new List<Cell>());
-			for (int j = 0; j < cellColumnCount; j++)
-			{
-				cells[i].Add(Instantiate(cellPrefab, gridObject.transform).GetComponent<Cell>());
-				cells[i][j].UpdateGridLayoutGroup(cellSize);
-			}
-		}
-		algorithmState = AlgorithmState.Stopped;
-		InitGridMap();
-		RotateMoveDirections(1);
+		get => instance;
 	}
 
-	IEnumerator updateTimeElapsedRoutine;
+	private void Awake()
+	{
+		if(instance == null)
+		{
+			instance = this;
+		}
+		else if(instance != this)
+		{
+			Destroy(gameObject);
+		}
+		gridLayoutGroup = gridObject.GetComponent<GridLayoutGroup>();
+	}
+
+	private void Start()
+	{
+		cells = new List<List<Cell>>();
+
+		RestoreDefaults();
+		InitGridMap();
+	}
+
+
 	public void OnRunButton()
 	{
 		if(algorithmState == AlgorithmState.Stopped)
 		{
 			OnStopButton();
+			SetParameters();
 			algorithmState = AlgorithmState.Running;
 			runButtonText.text = "PAUSE";
 			StartCoroutine(InitFirstGeneration(population));
@@ -125,37 +170,206 @@ public class GameManager : MonoBehaviour
 		}
 		else if(algorithmState == AlgorithmState.Finished)
 		{
-			OnStopButton();
-			algorithmState = AlgorithmState.Running;
-			runButtonText.text = "PAUSE";
-			StartCoroutine(InitFirstGeneration(population));
-			StartCoroutine(UpdateTimeElapsed());
+			algorithmState = AlgorithmState.Stopped;
+			OnRunButton();
 		}
 	}
 
+	private void SetParameters()
+	{
+		cellRowColumnCount = rowColumnCountDropdown.value + 1;
+		droneCount = droneCountDropDown.value + 1;
+		populationCount = int.Parse(populationCountInputField.text);
+		selectCount = int.Parse(selectCountInputField.text);
+		exploredAreaFitnessWeight = float.Parse(exploredAreaFitnessWeightInputField.text);
+		returnedToStartFitnessWeight = float.Parse(returnedToStartFitnessWeightInputField.text);
+		rotateFitnessWeight = float.Parse(rotateFitnessWeightInputField.text);
+		drawDronePathsEachGeneration = drawDronePathsDropdown.value == 1;
+		drawDronePathsBestGeneration = drawDronePathsDropdown.value == 2;
+
+		stopIfExploredAllCells = stoppingConditionsToggleGroup.GetToggles()[1].isOn;
+		stopIfReachedDesiredFitness = stoppingConditionsToggleGroup.GetToggles()[2].isOn;
+		stopIfReachedMaxGenerationCount = stoppingConditionsToggleGroup.GetToggles()[0].isOn;
+
+		//Debug.LogError(stopIfExploredAllCells);
+		//Debug.LogError(stopIfReachedDesiredFitness);
+		//Debug.LogError(stopIfReachedMaxGenerationCount);
+
+		desiredFitness = float.Parse(desiredFitnessInputField.text);
+		maxGenerationCount = int.Parse(maxGenerationCountInputField.text);
+
+		mutationCount = mutationCountDefault;
+	}
+
+	private Vector2 CalculateCellSize(int cellRowColumnCount)
+	{
+		float gridObjectSizeX = gridObject.GetComponent<RectTransform>().sizeDelta.x;
+		gridObjectSizeX -= gridLayoutGroup.padding.left + gridLayoutGroup.padding.right;
+		gridObjectSizeX -= (cellRowColumnCount - 1) * gridLayoutGroup.spacing.x;
+		gridObjectSizeX /= cellRowColumnCount;
+		Vector2 cellSize = new Vector2(gridObjectSizeX, gridObjectSizeX);
+		
+		return cellSize;
+	}
+	private IEnumerator CoWaitForPosition(int cellRowColumnCount)
+	{
+		yield return new WaitForEndOfFrame();
+		// Find position of objects in grid
+		for (int i = 0; i < cellRowColumnCount; i++)
+		{
+			for (int j = 0; j < cellRowColumnCount; j++)
+			{
+				cells[i][j].Init(i, j);
+			}
+		}
+	}
+
+	public void UpdateGridMap(Dropdown newValue)
+	{
+		if(cells.Count == 0) { return; }
+		OnStopButton();
+		cellRowColumnCount = newValue.value + 1;
+		for (int i = 0; i < cells.Count; i++)
+		{
+			for (int j = 0; j < cells.Count; j++)
+			{
+				GameObject temp = cells[i][j].gameObject;
+				Destroy(temp);
+			}
+		}
+		cells.Clear();
+		cells = new List<List<Cell>>();
+		for (int i = 0; i < cellRowColumnCount; i++)
+		{
+			cells.Add(new List<Cell>());
+			for (int j = 0; j < cellRowColumnCount; j++)
+			{
+				cells[i].Add(Instantiate(cellPrefab, gridObject.transform).GetComponent<Cell>());
+			}
+		}
+
+		StartCoroutine(CoWaitForPosition(cellRowColumnCount));
+		algorithmState = AlgorithmState.Stopped;
+		RotateMoveDirections(1);
+		gridLayoutGroup.cellSize = CalculateCellSize(cellRowColumnCount);
+
+		Destroy(startFinishLocationObject);
+		if(((startFinishLocation.x + 1) > cells.Count) || ((startFinishLocation.y + 1) > cells.Count))
+		{
+			startFinishLocationObject = Instantiate(startFinishLocationImagePrefab, cells[cellRowColumnCount - 1][cellRowColumnCount - 1].transform, false);
+			TrySetStartPosition(cellRowColumnCount - 1, cellRowColumnCount - 1);
+		}
+		else
+		{
+			startFinishLocationObject = Instantiate(startFinishLocationImagePrefab, cells[startFinishLocation.x][startFinishLocation.y].transform, false);
+		}
+	}
+
+	private void InitGridMap()
+	{
+		gridLayoutGroup.cellSize = CalculateCellSize(cellRowColumnCount);
+
+		for (int i = 0; i < cellRowColumnCount; i++)
+		{
+			cells.Add(new List<Cell>());
+			for (int j = 0; j < cellRowColumnCount; j++)
+			{
+				cells[i].Add(Instantiate(cellPrefab, gridObject.transform).GetComponent<Cell>());
+			}
+		}
+
+		StartCoroutine(CoWaitForPosition(cellRowColumnCount));
+		algorithmState = AlgorithmState.Stopped;
+		RotateMoveDirections(1);
+
+		startFinishLocationObject = Instantiate(startFinishLocationImagePrefab, cells[startFinishLocation.x][startFinishLocation.y].transform, false);
+	}
+
+	public void RestoreDefaults()
+	{
+		if((algorithmState == AlgorithmState.Stopped) || (algorithmState == AlgorithmState.Finished))
+		{
+			reproduceFunctionOption = reproduceFunctionOptionDefault;
+
+			cellRowColumnCount = rowColumnCountDefault;
+			droneCount = droneCountDefault;
+			populationCount = populationCountDefault;
+			selectCount = selectCountDefault;
+			exploredAreaFitnessWeight = exploredAreaFitnessWeightDefault;
+			returnedToStartFitnessWeight = returnedToStartFitnessWeightDefault;
+			rotateFitnessWeight = rotateFitnessWeightDefault;
+			mutationCount = mutationCountDefault;
+
+			stopIfExploredAllCells = stopIfExploredAllCellsDefault;
+			stopIfReachedDesiredFitness = stopIfReachedDesiredFitnessDefault;
+			stopIfReachedMaxGenerationCount = stopIfReachedMaxGenerationCountDefault;
+
+			desiredFitness = desiredFitnessDefault;
+			maxGenerationCount = maxGenerationCountDefault;
+			drawDronePathsEachGeneration = drawDronePathsEachGenerationDefault;
+			drawDronePathsBestGeneration = drawDronePathsBestGenerationDefault;
+
+			rowColumnCountDropdown.value = rowColumnCountDefault - 1;
+			droneCountDropDown.value = droneCountDefault - 1;
+			populationCountInputField.text = populationCountDefault.ToString();
+			selectCountInputField.text = selectCountDefault.ToString();
+			exploredAreaFitnessWeightInputField.text = exploredAreaFitnessWeightDefault.ToString("F2");
+			returnedToStartFitnessWeightInputField.text = returnedToStartFitnessWeightDefault.ToString("F2");
+			rotateFitnessWeightInputField.text = rotateFitnessWeightDefault.ToString("F2");
+
+			if (stopIfExploredAllCellsDefault)
+			{
+				stoppingConditionsToggleGroup.GetToggles()[2].isOn = true;
+			}
+			else if (stopIfReachedDesiredFitnessDefault)
+			{
+				stoppingConditionsToggleGroup.GetToggles()[1].isOn = true;
+			}
+			else if (stopIfReachedMaxGenerationCountDefault)
+			{
+				stoppingConditionsToggleGroup.GetToggles()[0].isOn = true;
+			}
+
+			if (drawDronePathsEachGenerationDefault)
+			{
+				drawDronePathsDropdown.value = 1;
+			}
+			else if (drawDronePathsBestGenerationDefault)
+			{
+				drawDronePathsDropdown.value = 2;
+			}
+			else
+			{
+				drawDronePathsDropdown.value = 0;
+			}
+
+			desiredFitnessInputField.text = desiredFitnessDefault.ToString("F2");
+			maxGenerationCountInputField.text = maxGenerationCountDefault.ToString();
+		}
+	}
 
 	public void OnStopButton()
 	{
+		for(int i = 0; i < lines.Count; i++)
+		{
+			VectorLine.lineManager.DisableLine(lines[i], 0f);
+		}
+		lines.Clear();
+
 		algorithmState = AlgorithmState.Stopped;
 		population = new List<Individual>();
 		maxExploredCellCount = 0;
 		RotateMoveDirections(1);
-		for (int i = 0; i < cellRowCount; i++)
+		for (int i = 0; i < cellRowColumnCount; i++)
 		{
-			for (int j = 0; j < cellColumnCount; j++)
+			for (int j = 0; j < cellRowColumnCount; j++)
 			{
 				cells[i][j].droneLocationText.text = "";
-				cells[i][j].oneDroneImages[0].SetActive(false);
-				for (int k = 0; k < 2; k++)
-				{
-					cells[i][j].twoDroneImages[k].SetActive(false);
-				}
-				for (int k = 0; k < 4; k++)
-				{
-					cells[i][j].fourDroneImages[k].SetActive(false);
-				}
+				cells[i][j].ResetExploreds();
 			}
 		}
+
+
 		generationText.text = "0";
 		bestFitnessOfThisGenerationText.text = "0";
 		bestFitnessOfAllGenerationsText.text = "0";
@@ -202,15 +416,18 @@ public class GameManager : MonoBehaviour
 		yield return null;
 	}
 
-	private void InitGridMap()
+	public void TrySetStartPosition(int cellRow, int cellColumn)
 	{
-		gridLayoutGroup.constraintCount = cellColumnCount;
-		Instantiate(startFinishLocationImagePrefab, cells[startFinishLocation.x][startFinishLocation.y].transform, false);
+		if ((algorithmState == AlgorithmState.Stopped))
+		{
+			startFinishLocation = new Vector2Int(cellRow, cellColumn);
+			startFinishLocationObject.transform.SetParent(cells[cellRow][cellColumn].transform, false);
+		}
 	}
 
 	private IEnumerator InitFirstGeneration(List<Individual> population)
 	{
-		chromosomeLength = Mathf.CeilToInt((cellRowCount * cellColumnCount - 1) / droneCount) + 1;
+		chromosomeLength = Mathf.CeilToInt((cellRowColumnCount * cellRowColumnCount - 1) / droneCount) + 1;
 		currentGeneration = 1;
 
 
@@ -227,59 +444,42 @@ public class GameManager : MonoBehaviour
 	private IEnumerator UpdateUI(Individual bestIndividualOfThisGeneration, Individual bestIndividualOfAllGenerations, bool isAlgorithmFinishedRunning)
 	{
 		generationText.text = currentGeneration.ToString();
-
-		switch (droneCount)
+		List<int> exploredByDrones = new List<int>();
+		for(int i = 0; i < cellRowColumnCount; i++)
 		{
-			case 1:
-				for (int j = 0; j < cellRowCount; j++)
+			for(int j = 0; j < cellRowColumnCount; j++)
+			{
+				cells[i][j].droneLocationText.text = "";
+				exploredByDrones.Clear();
+				for(int k = 0; k < droneCount; k++)
 				{
-					for (int k = 0; k < cellColumnCount; k++)
+					if(bestIndividualOfThisGeneration != null && bestIndividualOfThisGeneration.drones[k].exploredCells[i, j] == true)
 					{
-						cells[j][k].droneLocationText.text = "";
-						cells[j][k].oneDroneImages[0].gameObject.SetActive(false);
-						if (bestIndividualOfThisGeneration != null && bestIndividualOfThisGeneration.exploredCells[j, k] == true)
-						{
-							cells[j][k].oneDroneImages[0].gameObject.SetActive(true);
-						}
+						exploredByDrones.Add(k);
 					}
 				}
-				break;
-			case 2:
-				for (int j = 0; j < cellRowCount; j++)
-				{
-					for (int k = 0; k < cellColumnCount; k++)
-					{
-						cells[j][k].droneLocationText.text = "";
-						for (int i = 0; i < droneCount; i++)
-						{
-							cells[j][k].twoDroneImages[i].gameObject.SetActive(false);
-							if (bestIndividualOfThisGeneration.drones[i].exploredCells[j, k] == true)
-							{
-								cells[j][k].twoDroneImages[i].gameObject.SetActive(true);
-							}
-						}
-					}
-				}
-				break;
-			case 4:
-				for (int j = 0; j < cellRowCount; j++)
-				{
-					for (int k = 0; k < cellColumnCount; k++)
-					{
-						cells[j][k].droneLocationText.text = "";
-						for (int i = 0; i < droneCount; i++)
-						{
-							cells[j][k].fourDroneImages[i].gameObject.SetActive(false);
-							if (bestIndividualOfThisGeneration.drones[i].exploredCells[j, k] == true)
-							{
-								cells[j][k].fourDroneImages[i].gameObject.SetActive(true);
-							}
-						}
-					}
-				}
-				break;
+				cells[i][j].ExploreByDrones(exploredByDrones);
+			}
 		}
+		if (drawDronePathsEachGeneration)
+		{
+			for (int i = 0; i < lines.Count; i++)
+			{
+				VectorLine.lineManager.DisableLine(lines[i], 0f);
+			}
+			lines.Clear();
+			for (int i = 0; i < droneCount; i++)
+			{
+				List<Cell> tempPath = bestIndividualOfThisGeneration.drones[i].path;
+				Vector2[] linePoints = new Vector2[tempPath.Count];
+				for (int j = 0; j < tempPath.Count; j++)
+				{
+					linePoints[j] = (tempPath[j].pixelPosition);
 
+				}
+				lines.Add(VectorLine.SetLine(droneColors[i], 2f, linePoints));
+			}
+		}
 		bestFitnessOfThisGenerationText.text = bestIndividualOfThisGeneration.totalWeightedFitness.ToString("F3");
 		currentGenExploredCellsCountText.text = bestIndividualOfThisGeneration.totalExploredCellCount.ToString();
 		bestFitnessOfAllGenerationsText.text = bestIndividualOfAllGenerations.totalWeightedFitness.ToString("F3");
@@ -292,114 +492,67 @@ public class GameManager : MonoBehaviour
 
 		for (int i = 0; i < droneCount; i++)
 		{
-			if(cells[bestIndividualOfThisGeneration.drones[i].lastLocation.x][bestIndividualOfThisGeneration.drones[i].lastLocation.y].droneLocationText.text != "")
+			if (cells[bestIndividualOfThisGeneration.drones[i].lastLocation.x][bestIndividualOfThisGeneration.drones[i].lastLocation.y].droneLocationText.text != "")
 			{
 				cells[bestIndividualOfThisGeneration.drones[i].lastLocation.x][bestIndividualOfThisGeneration.drones[i].lastLocation.y].droneLocationText.text += "-" + (i + 1);
 			}
 			else
 			{
+				if(cells[bestIndividualOfThisGeneration.drones[i].lastLocation.x][bestIndividualOfThisGeneration.drones[i].lastLocation.y].droneLocationText.text.Length > 10)
+				{
+					cells[bestIndividualOfThisGeneration.drones[i].lastLocation.x][bestIndividualOfThisGeneration.drones[i].lastLocation.y].droneLocationText.text += "\n";
+				}
 				cells[bestIndividualOfThisGeneration.drones[i].lastLocation.x][bestIndividualOfThisGeneration.drones[i].lastLocation.y].droneLocationText.text += "Drone " + (i + 1);
 			}
 		}
-		switch (droneCount)
+
+		if (isAlgorithmFinishedRunning)
 		{
-			case 1:
-				if (isAlgorithmFinishedRunning)
+			for (int i = 0; i < cellRowColumnCount; i++)
+			{
+				for (int j = 0; j < cellRowColumnCount; j++)
 				{
-					for (int i = 0; i < cellRowCount; i++)
+					cells[i][j].droneLocationText.text = "";
+					exploredByDrones.Clear();
+					for (int k = 0; k < droneCount; k++)
 					{
-						for (int j = 0; j < cellColumnCount; j++)
+						if (bestIndividualOfAllGenerations != null && bestIndividualOfAllGenerations.drones[k].exploredCells[i, j] == true)
 						{
-							cells[i][j].droneLocationText.text = "";
-							cells[i][j].oneDroneImages[0].SetActive(false);
-							if (bestIndividualOfAllGenerations != null && bestIndividualOfAllGenerations.exploredCells[i, j] == true)
-							{
-								cells[i][j].oneDroneImages[0].SetActive(true);
-							}
+							exploredByDrones.Add(k);
 						}
 					}
-					cells[bestIndividualOfAllGenerations.drones[0].lastLocation.x][bestIndividualOfAllGenerations.drones[0].lastLocation.y].droneLocationText.text = "Drone 1";
-					maxExploredCellsCountText.text = bestIndividualOfAllGenerations.totalExploredCellCount.ToString();
+					cells[i][j].ExploreByDrones(exploredByDrones);
 				}
-				break;
-			case 2:
-				if (isAlgorithmFinishedRunning)
+			}
+			if (drawDronePathsBestGeneration)
+			{
+				for(int i = 0; i < droneCount; i++)
 				{
-					for (int i = 0; i < cellRowCount; i++)
+					List<Cell> tempPath = bestIndividualOfAllGenerations.drones[i].path;
+					Vector2[] linePoints = new Vector2[tempPath.Count];
+					for (int j = 0; j < tempPath.Count; j++)
 					{
-						for (int j = 0; j < cellColumnCount; j++)
-						{
-							cells[i][j].droneLocationText.text = "";
-							for (int k = 0; k < droneCount; k++)
-							{
-								cells[i][j].twoDroneImages[k].SetActive(false);
-							}
-							if (bestIndividualOfAllGenerations != null && bestIndividualOfAllGenerations.exploredCells[i, j] == true)
-							{
-								for (int k = 0; k < droneCount; k++)
-								{
-									if (bestIndividualOfAllGenerations.drones[k].exploredCells[i, j] == true)
-									{
-										cells[i][j].twoDroneImages[k].SetActive(true);
-									}
-								}
-							}
-						}
+						linePoints[j] = (tempPath[j].pixelPosition);
+
 					}
-					for (int i = 0; i < droneCount; i++)
-					{
-						if (cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text != "")
-						{
-							cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text += "-" + (i + 1);
-						}
-						else
-						{
-							cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text += "Drone " + (i + 1);
-						}
-					}
-					maxExploredCellsCountText.text = bestIndividualOfAllGenerations.totalExploredCellCount.ToString();
+					lines.Add(VectorLine.SetLine(droneColors[i], 4f, linePoints));
 				}
-				break;
-			case 4:
-				if (isAlgorithmFinishedRunning)
+			}
+
+			for (int i = 0; i < droneCount; i++)
+			{
+				if (cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text != "")
 				{
-					for (int i = 0; i < cellRowCount; i++)
-					{
-						for (int j = 0; j < cellColumnCount; j++)
-						{
-							cells[i][j].droneLocationText.text = "";
-							for (int k = 0; k < droneCount; k++)
-							{
-								cells[i][j].fourDroneImages[k].SetActive(false);
-							}
-							if (bestIndividualOfAllGenerations != null && bestIndividualOfAllGenerations.exploredCells[i, j] == true)
-							{
-								for (int k = 0; k < droneCount; k++)
-								{
-									if (bestIndividualOfAllGenerations.drones[k].exploredCells[i, j] == true)
-									{
-										cells[i][j].fourDroneImages[k].SetActive(true);
-									}
-								}
-							}
-						}
-					}
-					for (int i = 0; i < droneCount; i++)
-					{
-						if (cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text != "")
-						{
-							cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text += "-" + (i + 1);
-						}
-						else
-						{
-							cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text += "Drone " + (i + 1);
-						}
-					}
-					maxExploredCellsCountText.text = maxExploredCellCount.ToString();
-					currentGenExploredCellsCountText.text = bestIndividualOfAllGenerations.totalExploredCellCount.ToString();
-					bestFitnessOfThisGenerationText.text = bestIndividualOfAllGenerations.totalWeightedFitness.ToString();
+					cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text += "-" + (i + 1);
 				}
-				break;
+				else
+				{
+					cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text += "Drone " + (i + 1);
+				}
+			}
+			maxExploredCellsCountText.text = maxExploredCellCount.ToString();
+			currentGenExploredCellsCountText.text = bestIndividualOfAllGenerations.totalExploredCellCount.ToString();
+			bestFitnessOfThisGenerationText.text = bestIndividualOfAllGenerations.totalWeightedFitness.ToString("F3");
 		}
 		yield return null;
 	}
@@ -493,49 +646,19 @@ public class GameManager : MonoBehaviour
 		lastMovedDirection = direction;
 	}
 
-	/*private void PrintPopulations(List<List<Individual>> populations)
-	{
-		for (int i = 0; i < droneCount; i++)
-		{
-			for (int j = 0; j < populationCount; j++)
-			{
-				PrintChromosome(populations[i][j], "", "");
-			}
-		}
-	}*/
-
 	private Individual GetBestIndividualOfPopulation(List<Individual> population)
 	{
 		List<Individual> tempPopulation = population;
 		sort(tempPopulation, 0, tempPopulation.Count - 1);
 
 		return tempPopulation[tempPopulation.Count - 1];
-
-		//string prefix = "Best: ";
-		//string suffix = "\t Population Size: " + population.Count;
-		//PrintChromosome(tempPopulation[tempPopulation.Count - 1], prefix, suffix);
-
 	}
 
-	/*private void PrintChromosome(Individual individual, string prefix, string suffix)
-	{
-		string chromosome = prefix;
-		chromosome += "\t\tFitness: " + individual.totalWeightedFitness.ToString("F3") +
-						"\t\tMRF: " + individual.moveRotateFitness.ToString("F3") +
-						"\t\tRTS: " + individual.returnedToStartFitness.ToString("F3") +
-						"\t\tLength: " + individual.path.Count + suffix;
-		chromosome += "\t\t\t";
-		for (int i = 0; i < individual.path.Count; i++)
-		{
-			chromosome += individual.path[i] + "-";
-		}
-		Debug.Log(chromosome);
-	}*/
 
 	private IEnumerator GeneticAlgorithm(List<Individual> population)
 	{
-		Individual bestOfAll = new Individual(cellRowCount, cellColumnCount, float.MinValue, droneCount);
-		Individual bestOfThisGeneration = new Individual(cellRowCount, cellColumnCount, float.MinValue, droneCount);
+		Individual bestOfAll = new Individual(cellRowColumnCount, float.MinValue, droneCount);
+		Individual bestOfThisGeneration = new Individual(cellRowColumnCount, float.MinValue, droneCount);
 		bestOfThisGeneration = GetBestIndividualOfPopulation(population);
 		bestOfAll = bestOfThisGeneration;
 		CalculateFitness(bestOfThisGeneration, startFinishLocation, true);
@@ -566,7 +689,6 @@ public class GameManager : MonoBehaviour
 				bestOfAll = bestOfThisGeneration;
 			}
 		}
-		//PrintChromosome(bestOfAll, "BEST OF ALL: ", "");
 		if (algorithmState == AlgorithmState.Finished)
 		{
 			yield return StartCoroutine(UpdateUI(bestOfThisGeneration, bestOfAll, true));
@@ -593,15 +715,15 @@ public class GameManager : MonoBehaviour
 		if(algorithmState == AlgorithmState.Stopped) { return true; }
 		float fitness = bestOfAll.totalWeightedFitness;
 		bool isReachedCondition = true;
-		if (reachedMaxGenerationCount)
+		if (stopIfReachedMaxGenerationCount)
 		{
 			isReachedCondition = currentGeneration >= maxGenerationCount;
 		}
-		else if (scannedAllCells)
+		else if (stopIfExploredAllCells)
 		{
-			isReachedCondition = maxExploredCellCount == (cellRowCount * cellColumnCount);
+			isReachedCondition = maxExploredCellCount == (cellRowColumnCount * cellRowColumnCount);
 		}
-		else if (reachedDesiredFitness)
+		else if (stopIfReachedDesiredFitness)
 		{
 			isReachedCondition = bestOfAll.totalWeightedFitness >= desiredFitness;
 		}
@@ -612,6 +734,11 @@ public class GameManager : MonoBehaviour
 		}
 
 		return isReachedCondition;
+	}
+
+	public void OnExitButton()
+	{
+		Application.Quit();
 	}
 
 	private void CalculateFitnesses(List<Individual> population)
@@ -646,7 +773,7 @@ public class GameManager : MonoBehaviour
 			currentLocation = initialLocation;
 			RotateMoveDirections(1);
 			cells[currentLocation.x][currentLocation.y].isExplored = true;
-			individual.ExploreCell(currentLocation.x, currentLocation.y, i);
+			individual.ExploreCell(currentLocation.x, currentLocation.y, i, cells[currentLocation.x][currentLocation.y]);
 			individual.drones[i].exploredCells[currentLocation.x, currentLocation.y] = true;
 			for (int j = i * chromosomeLength; j < chromosomeLength * (i + 1); j++)
 			{
@@ -658,7 +785,7 @@ public class GameManager : MonoBehaviour
 				{
 					currentLocation = MoveToDirection(currentLocation, individual.path[j]);
 					cells[currentLocation.x][currentLocation.y].isExplored = true;
-					individual.ExploreCell(currentLocation.x, currentLocation.y, i);
+					individual.ExploreCell(currentLocation.x, currentLocation.y, i, cells[currentLocation.x][currentLocation.y]);
 					individual.drones[i].exploredCells[currentLocation.x, currentLocation.y] = true;
 					RotateMoveDirections(individual.path[j]);
 				}
@@ -667,10 +794,10 @@ public class GameManager : MonoBehaviour
 			int distanceToStartLocation = Mathf.Abs(initialLocation.x - currentLocation.x) > Mathf.Abs(initialLocation.y - currentLocation.y)
 							? Mathf.Abs(initialLocation.x - currentLocation.x)
 							: Mathf.Abs(initialLocation.y - currentLocation.y);
-			returnedToStartFitness += 1 - (float)distanceToStartLocation / (cellRowCount - 1);
+			returnedToStartFitness += 1 - (float)distanceToStartLocation / (cellRowColumnCount - 1);
 		}
 
-		moveRotateFitness /= cellRowCount * cellColumnCount * 5;
+		moveRotateFitness /= cellRowColumnCount * cellRowColumnCount * 4.5f;
 		returnedToStartFitness /= droneCount;
 
 
@@ -688,11 +815,11 @@ public class GameManager : MonoBehaviour
 		}
 		individual.totalExploredCellCount = exploredCellCount;
 
-		exploredAreaFitness += (float)exploredCellCount / (cellRowCount * cellColumnCount);
+		exploredAreaFitness += (float)exploredCellCount / (cellRowColumnCount * cellRowColumnCount);
 
 		totalWeightedFitness += exploredAreaFitnessWeight * exploredAreaFitness;
 		totalWeightedFitness += returnedToStartFitnessWeight * returnedToStartFitness;
-		totalWeightedFitness += moveRotateFitnessWeight * moveRotateFitness;
+		totalWeightedFitness += rotateFitnessWeight * moveRotateFitness;
 
 		individual.totalWeightedFitness = totalWeightedFitness;
 	}
@@ -709,7 +836,7 @@ public class GameManager : MonoBehaviour
 
 	private Individual GenerateRandomChromosome(int chromosomeLength)
 	{
-		Individual individual = new Individual(cellRowCount, cellColumnCount, 0f, droneCount);
+		Individual individual = new Individual(cellRowColumnCount, 0f, droneCount);
 		for (int i = 0; i < chromosomeLength; i++)
 		{
 			individual.path.Add(Random.Range(0, 8));
@@ -720,9 +847,9 @@ public class GameManager : MonoBehaviour
 	private bool CanMoveToDirection(Vector2Int location, int direction)
 	{
 		if ((location.x + directionCoordinates[direction].x) < 0) { return false; }
-		if ((location.x + directionCoordinates[direction].x) >= cellColumnCount) { return false; }
+		if ((location.x + directionCoordinates[direction].x) >= cellRowColumnCount) { return false; }
 		if ((location.y + directionCoordinates[direction].y) < 0) { return false; }
-		if ((location.y + directionCoordinates[direction].y) >= cellRowCount) { return false; }
+		if ((location.y + directionCoordinates[direction].y) >= cellRowColumnCount) { return false; }
 
 		return true;
 	}
@@ -825,7 +952,9 @@ public class GameManager : MonoBehaviour
 			for (int j = 0; j < populationToReproduce.Count; j++)
 			{
 				if (i != j)
+				{
 					newPopulation.Add(ReproduceChromosome(populationToReproduce[i], populationToReproduce[j]));
+				}
 			}
 		}
 		return newPopulation;
@@ -834,13 +963,14 @@ public class GameManager : MonoBehaviour
 	//TODO: birden fazla noktadan crossover
 	private Individual ReproduceChromosome(Individual individual_1, Individual individual_2)
 	{
-		//int newLengthChromosome_1 = Mathf.RoundToInt(individual_1.path.Count * (individual_1.totalWeightedFitness / (individual_1.totalWeightedFitness + individual_2.totalWeightedFitness)));
-		int newLengthChromosome_1 = Random.Range(0, 1) * chromosomeLength;
-		int newLengthChromosome_2 = individual_1.path.Count - newLengthChromosome_1;
+		int newLengthChromosome_1 = Random.Range(0, 1) * chromosomeLength * droneCount;
+		int newLengthChromosome_2 = Random.Range(0, 1) * (chromosomeLength * droneCount - newLengthChromosome_1);
+		int newLengthChromosome_3 = individual_1.path.Count - (newLengthChromosome_1 + newLengthChromosome_2);
 
-		Individual newIndividual = new Individual(cellRowCount, cellColumnCount, 0f, droneCount);
+		Individual newIndividual = new Individual(cellRowColumnCount, 0f, droneCount);
 		newIndividual.path.AddRange(individual_1.path.GetRange(0, newLengthChromosome_1));
 		newIndividual.path.AddRange(individual_2.path.GetRange(newLengthChromosome_1, newLengthChromosome_2));
+		newIndividual.path.AddRange(individual_1.path.GetRange(newLengthChromosome_2, newLengthChromosome_3));
 
 		return newIndividual;
 	}
@@ -859,31 +989,30 @@ public class GameManager : MonoBehaviour
 		public float totalWeightedFitness;
 		public int totalExploredCellCount;
 
-		private int rowCount;
-		private int columnCount;
+		private int rowColumnCount;
 		private int droneCount;
 		public List<Drone> drones;
 
 		public bool[,] exploredCells;
 
-		public Individual(int rowCount, int columnCount, float fitness, int droneCount)
+		public Individual(int rowColumnCount, float fitness, int droneCount)
 		{
 			path = new List<int>();
 			drones = new List<Drone>();
-			this.rowCount = rowCount;
-			this.columnCount = columnCount;
+			this.rowColumnCount = rowColumnCount;
 			this.droneCount = droneCount;
-			exploredCells = new bool[rowCount, columnCount];
+			exploredCells = new bool[rowColumnCount, rowColumnCount];
 			for (int i = 0; i < droneCount; i++)
 			{
-				drones.Add(new Drone(rowCount, columnCount));
+				drones.Add(new Drone(rowColumnCount, rowColumnCount));
 			}
 		}
 
-		public void ExploreCell(int row, int column, int droneNumber)
+		public void ExploreCell(int row, int column, int droneNumber, Cell exploredCell)
 		{
 			exploredCells[row, column] = true;
 			drones[droneNumber].exploredCells[row, column] = true;
+			drones[droneNumber].path.Add(exploredCell);
 		}
 
 		public void ResetExploredCells()
@@ -903,11 +1032,14 @@ public class GameManager : MonoBehaviour
 		private int rowCount;
 		private int columnCount;
 
+		public List<Cell> path;
+
 		public Drone(int rowCount, int columnCount)
 		{
 			exploredCells = new bool[rowCount, columnCount];
 			this.rowCount = rowCount;
 			this.columnCount = columnCount;
+			path = new List<Cell>();
 		}
 		public void ResetExploredCells()
 		{
@@ -918,6 +1050,7 @@ public class GameManager : MonoBehaviour
 					exploredCells[i, j] = false;
 				}
 			}
+			path.Clear();
 		}
 	}
 
@@ -1018,17 +1151,5 @@ public class GameManager : MonoBehaviour
 			Debug.Log(arr[i] + " ");
 		Debug.Log("");
 	}
-
-	/*// Driver code
-	public static void Main(string[] args)
-	{
-		int[] arr = { 12, 11, 13, 5, 6, 7 };
-		Console.WriteLine("Given Array");
-		printArray(arr);
-		MergeSort ob = new MergeSort();
-		ob.sort(arr, 0, arr.Length - 1);
-		Console.WriteLine("\nSorted array");
-		printArray(arr);
-	}*/
 	#endregion
 }
