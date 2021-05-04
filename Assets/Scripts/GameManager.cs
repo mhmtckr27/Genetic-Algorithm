@@ -82,12 +82,19 @@ public class GameManager : MonoBehaviour
 		gridLayoutGroup = gridObject.GetComponent<GridLayoutGroup>();
 		cells = new List<List<Cell>>();
 
+		float gridObjectSizeX = gridObject.GetComponent<RectTransform>().sizeDelta.x;
+		gridObjectSizeX -= gridLayoutGroup.padding.left + gridLayoutGroup.padding.right;
+		gridObjectSizeX -= (cellColumnCount - 1) * gridLayoutGroup.spacing.x;
+		gridObjectSizeX /= cellColumnCount;
+		Vector2 cellSize = new Vector2(gridObjectSizeX, gridObjectSizeX);
+		gridLayoutGroup.cellSize = cellSize;
 		for (int i = 0; i < cellRowCount; i++)
 		{
 			cells.Add(new List<Cell>());
 			for (int j = 0; j < cellColumnCount; j++)
 			{
 				cells[i].Add(Instantiate(cellPrefab, gridObject.transform).GetComponent<Cell>());
+				cells[i][j].UpdateGridLayoutGroup(cellSize);
 			}
 		}
 		algorithmState = AlgorithmState.Stopped;
@@ -198,7 +205,7 @@ public class GameManager : MonoBehaviour
 	private void InitGridMap()
 	{
 		gridLayoutGroup.constraintCount = cellColumnCount;
-		Instantiate(startFinishLocationImagePrefab, cells[startFinishLocation.x][startFinishLocation.y].transform, false).GetComponent<RectTransform>().localPosition = new Vector3(0, -7, 0);
+		Instantiate(startFinishLocationImagePrefab, cells[startFinishLocation.x][startFinishLocation.y].transform, false);
 	}
 
 	private IEnumerator InitFirstGeneration(List<Individual> population)
@@ -388,7 +395,9 @@ public class GameManager : MonoBehaviour
 							cells[bestIndividualOfAllGenerations.drones[i].lastLocation.x][bestIndividualOfAllGenerations.drones[i].lastLocation.y].droneLocationText.text += "Drone " + (i + 1);
 						}
 					}
-					maxExploredCellsCountText.text = bestIndividualOfAllGenerations.totalExploredCellCount.ToString();
+					maxExploredCellsCountText.text = maxExploredCellCount.ToString();
+					currentGenExploredCellsCountText.text = bestIndividualOfAllGenerations.totalExploredCellCount.ToString();
+					bestFitnessOfThisGenerationText.text = bestIndividualOfAllGenerations.totalWeightedFitness.ToString();
 				}
 				break;
 		}
