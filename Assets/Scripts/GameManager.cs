@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using UnityEngine.UI;
 using Vectrosity;
@@ -7,7 +8,6 @@ using Vectrosity;
 /// <summary>
 /// Author: Mehmet Hayri Çakýr
 /// </summary>
-
 
 public class GameManager : MonoBehaviour
 {
@@ -95,7 +95,8 @@ public class GameManager : MonoBehaviour
 	[SerializeField] private Dropdown rowColumnCountDropdown;
 	[SerializeField] private Dropdown droneCountDropDown;
 	[SerializeField] private InputField populationCountInputField;
-	[SerializeField] private InputField selectCountInputField;
+	//[SerializeField] private InputField selectCountInputField;
+	[SerializeField] private InputField mutationCountInputField;
 	[SerializeField] private InputField exploredAreaFitnessWeightInputField;
 	[SerializeField] private InputField returnedToStartFitnessWeightInputField;
 	[SerializeField] private InputField rotateFitnessWeightInputField;
@@ -103,6 +104,7 @@ public class GameManager : MonoBehaviour
 	[SerializeField] private ToggleGroupPublicToggles stoppingConditionsToggleGroup;
 	[SerializeField] private InputField desiredFitnessInputField;
 	[SerializeField] private InputField maxGenerationCountInputField;
+	[SerializeField] private Button restoreDefaultsButton;
 	
 
 	//private VectorLine[] lines;
@@ -124,7 +126,9 @@ public class GameManager : MonoBehaviour
 	{
 		get => instance;
 	}
-
+	CultureInfo culture;
+	Individual bestIndividualOfAllGenerations;
+	Individual bestIndividualOfCurrentGeneration;
 	private void Awake()
 	{
 		if(instance == null)
@@ -136,6 +140,7 @@ public class GameManager : MonoBehaviour
 			Destroy(gameObject);
 		}
 		gridLayoutGroup = gridObject.GetComponent<GridLayoutGroup>();
+		culture = CultureInfo.CreateSpecificCulture("en-US");
 	}
 
 	private void Start()
@@ -146,7 +151,7 @@ public class GameManager : MonoBehaviour
 		InitGridMap();
 	}
 
-
+	//run butonuna tiklayinca bu fonksiyon cagrilir
 	public void OnRunButton()
 	{
 		if(algorithmState == AlgorithmState.Stopped)
@@ -157,6 +162,7 @@ public class GameManager : MonoBehaviour
 			runButtonText.text = "PAUSE";
 			StartCoroutine(InitFirstGeneration(population));
 			StartCoroutine(UpdateTimeElapsed());
+			EnableAllInputs(false);
 		}
 		else if(algorithmState == AlgorithmState.Paused)
 		{
@@ -175,15 +181,64 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//algoritma calismasini bitirince veya kullanici iptal edince
+	//parametreleri duzenlemeyi aktif eden fonksiyon
+	private void EnableAllInputs(bool enable)
+	{
+		rowColumnCountDropdown.interactable = enable;
+		droneCountDropDown.interactable = enable;
+		populationCountInputField.interactable = enable;
+		//selectCountInputField.interactable = enable;
+		mutationCountInputField.interactable = enable;
+		exploredAreaFitnessWeightInputField.interactable = enable;
+		returnedToStartFitnessWeightInputField.interactable = enable;
+		rotateFitnessWeightInputField.interactable = enable;
+		drawDronePathsDropdown.interactable = enable;
+		foreach(Toggle toggle in stoppingConditionsToggleGroup.GetToggles())
+		{
+			toggle.interactable = enable;
+		}
+		desiredFitnessInputField.interactable = enable;
+		maxGenerationCountInputField.interactable = enable;
+		restoreDefaultsButton.interactable = enable;
+	}
+
+	//ekranda girilen parametreleri degiskenlere aktaran fonksiyon
 	private void SetParameters()
 	{
 		cellRowColumnCount = rowColumnCountDropdown.value + 1;
 		droneCount = droneCountDropDown.value + 1;
 		populationCount = int.Parse(populationCountInputField.text);
-		selectCount = int.Parse(selectCountInputField.text);
-		exploredAreaFitnessWeight = float.Parse(exploredAreaFitnessWeightInputField.text);
-		returnedToStartFitnessWeight = float.Parse(returnedToStartFitnessWeightInputField.text);
-		rotateFitnessWeight = float.Parse(rotateFitnessWeightInputField.text);
+		//selectCount = int.Parse(selectCountInputField.text);
+		selectCount = populationCount / (int)Mathf.Ceil(Mathf.Sqrt(populationCount));
+
+		if (exploredAreaFitnessWeightInputField.text.Contains("."))
+		{
+			exploredAreaFitnessWeight = float.Parse(exploredAreaFitnessWeightInputField.text, culture);
+		}
+		else
+		{
+			exploredAreaFitnessWeight = float.Parse(exploredAreaFitnessWeightInputField.text);
+		}
+
+		if (returnedToStartFitnessWeightInputField.text.Contains("."))
+		{
+			returnedToStartFitnessWeight = float.Parse(returnedToStartFitnessWeightInputField.text, culture);
+		}
+		else
+		{
+			returnedToStartFitnessWeight = float.Parse(returnedToStartFitnessWeightInputField.text);
+		}
+		
+		if (rotateFitnessWeightInputField.text.Contains("."))
+		{
+			rotateFitnessWeight = float.Parse(rotateFitnessWeightInputField.text, culture);
+		}
+		else
+		{
+			rotateFitnessWeight = float.Parse(rotateFitnessWeightInputField.text);
+		}
+
 		drawDronePathsEachGeneration = drawDronePathsDropdown.value == 1;
 		drawDronePathsBestGeneration = drawDronePathsDropdown.value == 2;
 
@@ -195,12 +250,22 @@ public class GameManager : MonoBehaviour
 		//Debug.LogError(stopIfReachedDesiredFitness);
 		//Debug.LogError(stopIfReachedMaxGenerationCount);
 
-		desiredFitness = float.Parse(desiredFitnessInputField.text);
+		if (desiredFitnessInputField.text.Contains("."))
+		{
+			desiredFitness = float.Parse(desiredFitnessInputField.text, culture);
+		}
+		else
+		{
+			desiredFitness = float.Parse(desiredFitnessInputField.text);
+		}
+
 		maxGenerationCount = int.Parse(maxGenerationCountInputField.text);
 
-		mutationCount = mutationCountDefault;
+		mutationCount = int.Parse(mutationCountInputField.text);
+		//Debug.LogError(mutationCount);
 	}
 
+	//harita boyutu degisince hucrelerin yeni boyutunu hesaplayan fonksiyon
 	private Vector2 CalculateCellSize(int cellRowColumnCount)
 	{
 		float gridObjectSizeX = gridObject.GetComponent<RectTransform>().sizeDelta.x;
@@ -211,6 +276,8 @@ public class GameManager : MonoBehaviour
 		
 		return cellSize;
 	}
+
+	//hucreleri ilklendiren fonksiyon
 	private IEnumerator CoWaitForPosition(int cellRowColumnCount)
 	{
 		yield return new WaitForEndOfFrame();
@@ -224,6 +291,8 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//arayuzden harita boyutunu degistirince bu fonksiyon cagrilir ve 
+	//gerekli degisiklikleri yapar
 	public void UpdateGridMap(Dropdown newValue)
 	{
 		if(cells.Count == 0) { return; }
@@ -265,6 +334,7 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//uygulama ilk calistiginda bu fonksiyon cagrilip haritayi olusturur
 	private void InitGridMap()
 	{
 		gridLayoutGroup.cellSize = CalculateCellSize(cellRowColumnCount);
@@ -285,6 +355,10 @@ public class GameManager : MonoBehaviour
 		startFinishLocationObject = Instantiate(startFinishLocationImagePrefab, cells[startFinishLocation.x][startFinishLocation.y].transform, false);
 	}
 
+	/// <summary>
+	/// Restore defaults butonuna tiklandiginda bu fonksiyon cagrilir ve
+	/// ilgili degiskenleri default degerlerine dondurur.
+	/// </summary>
 	public void RestoreDefaults()
 	{
 		if((algorithmState == AlgorithmState.Stopped) || (algorithmState == AlgorithmState.Finished))
@@ -312,10 +386,11 @@ public class GameManager : MonoBehaviour
 			rowColumnCountDropdown.value = rowColumnCountDefault - 1;
 			droneCountDropDown.value = droneCountDefault - 1;
 			populationCountInputField.text = populationCountDefault.ToString();
-			selectCountInputField.text = selectCountDefault.ToString();
+			//selectCountInputField.text = selectCountDefault.ToString();
 			exploredAreaFitnessWeightInputField.text = exploredAreaFitnessWeightDefault.ToString("F2");
 			returnedToStartFitnessWeightInputField.text = returnedToStartFitnessWeightDefault.ToString("F2");
 			rotateFitnessWeightInputField.text = rotateFitnessWeightDefault.ToString("F2");
+			mutationCountInputField.text = mutationCount.ToString();
 
 			if (stopIfExploredAllCellsDefault)
 			{
@@ -348,37 +423,46 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//stop butonuna basinca olacak olan seyleri yapar
 	public void OnStopButton()
 	{
-		for(int i = 0; i < lines.Count; i++)
+		EnableAllInputs(true);
+		if ((algorithmState == AlgorithmState.Running) || (algorithmState == AlgorithmState.Paused))
 		{
-			VectorLine.lineManager.DisableLine(lines[i], 0f);
+			algorithmState = AlgorithmState.Stopped;
+			UpdateUI(bestIndividualOfAllGenerations, bestIndividualOfAllGenerations, true);
 		}
-		lines.Clear();
-
-		algorithmState = AlgorithmState.Stopped;
-		population = new List<Individual>();
-		maxExploredCellCount = 0;
-		RotateMoveDirections(1);
-		for (int i = 0; i < cellRowColumnCount; i++)
+		else if((algorithmState == AlgorithmState.Stopped) || (algorithmState == AlgorithmState.Finished))
 		{
-			for (int j = 0; j < cellRowColumnCount; j++)
+			algorithmState = AlgorithmState.Stopped;
+			for(int i = 0; i < lines.Count; i++)
 			{
-				cells[i][j].droneLocationText.text = "";
-				cells[i][j].ResetExploreds();
+				VectorLine.lineManager.DisableLine(lines[i], 0f);
 			}
+			lines.Clear();
+
+			population = new List<Individual>();
+			maxExploredCellCount = 0;
+			RotateMoveDirections(1);
+			for (int i = 0; i < cellRowColumnCount; i++)
+			{
+				for (int j = 0; j < cellRowColumnCount; j++)
+				{
+					cells[i][j].droneLocationText.text = "";
+					cells[i][j].ResetExploreds();
+				}
+			}
+			generationText.text = "0";
+			bestFitnessOfThisGenerationText.text = "0";
+			bestFitnessOfAllGenerationsText.text = "0";
+			currentGenExploredCellsCountText.text = "0";
+			maxExploredCellsCountText.text = "0";
+			runButtonText.text = "RUN";
+			stopButtonText.text = "STOP";
 		}
-
-
-		generationText.text = "0";
-		bestFitnessOfThisGenerationText.text = "0";
-		bestFitnessOfAllGenerationsText.text = "0";
-		currentGenExploredCellsCountText.text = "0";
-		maxExploredCellsCountText.text = "0";
-		runButtonText.text = "RUN";
-		stopButtonText.text = "STOP";
 	}
 
+	//ekrandaki sure sayacini gunceller
 	private IEnumerator UpdateTimeElapsed()
 	{
 		float startingTime = Time.time;
@@ -416,15 +500,17 @@ public class GameManager : MonoBehaviour
 		yield return null;
 	}
 
+	//baslangic pozisyonunu degistirmeye yarar
 	public void TrySetStartPosition(int cellRow, int cellColumn)
 	{
-		if ((algorithmState == AlgorithmState.Stopped))
+		if ((algorithmState == AlgorithmState.Stopped) || (algorithmState == AlgorithmState.Finished))
 		{
 			startFinishLocation = new Vector2Int(cellRow, cellColumn);
 			startFinishLocationObject.transform.SetParent(cells[cellRow][cellColumn].transform, false);
 		}
 	}
 
+	//ilk jenerasyonu olusturur.
 	private IEnumerator InitFirstGeneration(List<Individual> population)
 	{
 		chromosomeLength = Mathf.CeilToInt((cellRowColumnCount * cellRowColumnCount - 1) / droneCount) + 1;
@@ -441,6 +527,7 @@ public class GameManager : MonoBehaviour
 		yield return null;
 	}
 
+	//arayuz guncellemelerinin yapildigi fonksiyon
 	private IEnumerator UpdateUI(Individual bestIndividualOfThisGeneration, Individual bestIndividualOfAllGenerations, bool isAlgorithmFinishedRunning)
 	{
 		generationText.text = currentGeneration.ToString();
@@ -557,6 +644,7 @@ public class GameManager : MonoBehaviour
 		yield return null;
 	}
 
+	//dronelarin donmesi sonucu rotate cost matrisini de donduren fonksiyon
 	private void RotateMoveDirections(int direction)
 	{
 		if (lastMovedDirection == direction) { return; }
@@ -646,6 +734,7 @@ public class GameManager : MonoBehaviour
 		lastMovedDirection = direction;
 	}
 
+	//verilen bi populasyonun en iyi bireyini dondurur
 	private Individual GetBestIndividualOfPopulation(List<Individual> population)
 	{
 		List<Individual> tempPopulation = population;
@@ -654,17 +743,17 @@ public class GameManager : MonoBehaviour
 		return tempPopulation[tempPopulation.Count - 1];
 	}
 
-
+	//temel genetik algoritma fonksiyonu, algoritmanin buyuk kismini icerir
 	private IEnumerator GeneticAlgorithm(List<Individual> population)
 	{
-		Individual bestOfAll = new Individual(cellRowColumnCount, float.MinValue, droneCount);
-		Individual bestOfThisGeneration = new Individual(cellRowColumnCount, float.MinValue, droneCount);
-		bestOfThisGeneration = GetBestIndividualOfPopulation(population);
-		bestOfAll = bestOfThisGeneration;
-		CalculateFitness(bestOfThisGeneration, startFinishLocation, true);
-		yield return StartCoroutine(UpdateUI(bestOfThisGeneration, bestOfAll, false));
+		bestIndividualOfAllGenerations = new Individual(cellRowColumnCount, float.MinValue, droneCount);
+		bestIndividualOfCurrentGeneration = new Individual(cellRowColumnCount, float.MinValue, droneCount);
+		bestIndividualOfCurrentGeneration = GetBestIndividualOfPopulation(population);
+		bestIndividualOfAllGenerations = bestIndividualOfCurrentGeneration;
+		CalculateFitness(bestIndividualOfCurrentGeneration, startFinishLocation, true);
+		yield return StartCoroutine(UpdateUI(bestIndividualOfCurrentGeneration, bestIndividualOfAllGenerations, false));
 
-		while (!ShouldStop(bestOfAll, currentGeneration))
+		while (!ShouldStop(bestIndividualOfAllGenerations, currentGeneration))
 		{
 			if (algorithmState == AlgorithmState.Paused)
 			{
@@ -679,19 +768,19 @@ public class GameManager : MonoBehaviour
 			}
 			CalculateFitnesses(population);
 			RotateMoveDirections(1);
-			bestOfThisGeneration = GetBestIndividualOfPopulation(population);
+			bestIndividualOfCurrentGeneration = GetBestIndividualOfPopulation(population);
 
-			CalculateFitness(bestOfThisGeneration, startFinishLocation, true);
-			yield return StartCoroutine(UpdateUI(bestOfThisGeneration, bestOfAll, false));
+			CalculateFitness(bestIndividualOfCurrentGeneration, startFinishLocation, true);
+			yield return StartCoroutine(UpdateUI(bestIndividualOfCurrentGeneration, bestIndividualOfAllGenerations, false));
 
-			if (bestOfThisGeneration.totalWeightedFitness > bestOfAll.totalWeightedFitness)
+			if (bestIndividualOfCurrentGeneration.totalWeightedFitness > bestIndividualOfAllGenerations.totalWeightedFitness)
 			{
-				bestOfAll = bestOfThisGeneration;
+				bestIndividualOfAllGenerations = bestIndividualOfCurrentGeneration;
 			}
 		}
 		if (algorithmState == AlgorithmState.Finished)
 		{
-			yield return StartCoroutine(UpdateUI(bestOfThisGeneration, bestOfAll, true));
+			yield return StartCoroutine(UpdateUI(bestIndividualOfCurrentGeneration, bestIndividualOfAllGenerations, true));
 			runButtonText.text = "RUN";
 			stopButtonText.text = "RESET";
 		}
@@ -702,6 +791,7 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//algoritmayi duraklatmaya yarayan fonksiyon
 	private IEnumerator Pause()
 	{
 		while (algorithmState == AlgorithmState.Paused)
@@ -710,9 +800,14 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//algoritma durma kosullarina geldi mi veya kullanici durdurma butonuna basti mi diye kontrol eder.
 	private bool ShouldStop(Individual bestOfAll, int currentGeneration)
 	{
-		if(algorithmState == AlgorithmState.Stopped) { return true; }
+		if(algorithmState == AlgorithmState.Stopped) 
+		{
+			algorithmState = AlgorithmState.Finished;
+			return true; 
+		}
 		float fitness = bestOfAll.totalWeightedFitness;
 		bool isReachedCondition = true;
 		if (stopIfReachedMaxGenerationCount)
@@ -731,16 +826,20 @@ public class GameManager : MonoBehaviour
 		if (isReachedCondition)
 		{
 			algorithmState = AlgorithmState.Finished;
+			EnableAllInputs(true);
 		}
 
 		return isReachedCondition;
 	}
 
+	//sag ust kosedeki carpi butonuna tiklayinca bu fonksiyon cagrilir ve
+	//uygulama kapatilir
 	public void OnExitButton()
 	{
 		Application.Quit();
 	}
 
+	//populasyondaki her bir bireyin uygunluk degerlerini hesaplayan fonksiyonu cagiran fonksiyon
 	private void CalculateFitnesses(List<Individual> population)
 	{
 		foreach (Individual individual in population)
@@ -750,6 +849,7 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//parametre olarak gelen bireyin uygunluk degerlerini hesaplar.
 	private void CalculateFitness(Individual individual, Vector2Int initialLocation, bool updateExploredCellsUI)
 	{
 		float totalWeightedFitness = 0f;
@@ -823,6 +923,8 @@ public class GameManager : MonoBehaviour
 
 		individual.totalWeightedFitness = totalWeightedFitness;
 	}
+
+	//taranan alani sifirlar
 	private void ResetExploredCells()
 	{
 		foreach (List<Cell> cellRow in cells)
@@ -834,6 +936,7 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//rastgele kromozom/birey olusturur.
 	private Individual GenerateRandomChromosome(int chromosomeLength)
 	{
 		Individual individual = new Individual(cellRowColumnCount, 0f, droneCount);
@@ -844,6 +947,7 @@ public class GameManager : MonoBehaviour
 		return individual;
 	}
 
+	//drone verilen yone hareket edip edemeyecegini hesaplar
 	private bool CanMoveToDirection(Vector2Int location, int direction)
 	{
 		if ((location.x + directionCoordinates[direction].x) < 0) { return false; }
@@ -854,17 +958,20 @@ public class GameManager : MonoBehaviour
 		return true;
 	}
 
+	//drone donus costunu hesaplar
 	private int CalculateMoveRotateFitness(Vector2Int location, int direction)
 	{
 		if (!CanMoveToDirection(location, direction)) { return -1000; }
 		return moveRotateFitnesses[moveDirections[direction]];
 	}
 
+	//droneu hareket ettirir.
 	private Vector2Int MoveToDirection(Vector2Int currentLocation, int direction)
 	{
 		return new Vector2Int(directionCoordinates[direction].x + currentLocation.x, directionCoordinates[direction].y + currentLocation.y);
 	}
 
+	//3 farkli birey secme fonksiyonundan istedigimizi cagirabildigimiz fonksiyon
 	private List<Individual> SelectIndividuals(List<Individual> population, int funcOption)
 	{
 		switch (funcOption)
@@ -884,6 +991,7 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//birey secme fonksiyonu
 	private List<Individual> SelectIndividuals1(List<Individual> population)
 	{
 		List<Individual> newPopulation = new List<Individual>();
@@ -904,6 +1012,7 @@ public class GameManager : MonoBehaviour
 		return newPopulation;
 	}
 
+	//birey secme fonksiyonu
 	private List<Individual> SelectIndividuals2(List<Individual> population)
 	{
 		List<Individual> sortedPopulation = new List<Individual>();
@@ -927,6 +1036,7 @@ public class GameManager : MonoBehaviour
 		return newPopulation;
 	}
 
+	//birey secme fonksiyonu
 	private List<Individual> SelectIndividuals3(List<Individual> population)
 	{
 		List<Individual> sortedPopulation = new List<Individual>();
@@ -943,6 +1053,7 @@ public class GameManager : MonoBehaviour
 		return newPopulation;
 	}
 
+	//verilen populasyondaki her bir bireyi birbiriyle caprazlayan fonksiyon
 	private List<Individual> Reproduce(List<Individual> populationToReproduce)
 	{
 		List<Individual> newPopulation = new List<Individual>();
@@ -960,7 +1071,7 @@ public class GameManager : MonoBehaviour
 		return newPopulation;
 	}
 
-	//TODO: birden fazla noktadan crossover
+	//bireyleri birden fazla noktadan(2) caprazlayan(crossover) fonksiyon
 	private Individual ReproduceChromosome(Individual individual_1, Individual individual_2)
 	{
 		int newLengthChromosome_1 = Random.Range(0, 1) * chromosomeLength * droneCount;
@@ -975,6 +1086,7 @@ public class GameManager : MonoBehaviour
 		return newIndividual;
 	}
 
+	//bireyleri mutasyona ugratan fonksiyon
 	private void MutateChromosomes(Individual individual, int mutationCount)
 	{
 		for (int i = 0; i < mutationCount; i++)
@@ -983,6 +1095,7 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//birey sinifi
 	public class Individual
 	{
 		public List<int> path;
@@ -1024,6 +1137,7 @@ public class GameManager : MonoBehaviour
 		}
 	}
 
+	//drone sinifi
 	public class Drone
 	{
 		public bool[,] exploredCells;
